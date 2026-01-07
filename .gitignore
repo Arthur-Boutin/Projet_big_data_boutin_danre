@@ -1,0 +1,35 @@
+# Airflow
+logs/
+airflow.db
+airflow-webserver.pid
+standalone_admin_password.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+
+# Data (Keep structure but ignore content)
+Datalake/raw/*
+!Datalake/raw/.gitkeep
+Datalake/formatted/*
+!Datalake/formatted/.gitkeep
+Datalake/state/*
+!Datalake/state/.gitkeep
+Datalake/usage/*
+!Datalake/usage/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+
+# System
+.DS_Store
+Thumbs.db
