@@ -42,6 +42,29 @@ def connect_es():
         print(f"❌ Erreur connexion ES: {e}")
         return None
 
+def ensure_dvf_mapping(es, index_name):
+    """Crée l'index avec le mapping GeoPoint si inexistant."""
+    if not es.indices.exists(index=index_name):
+        mapping = {
+            "mappings": {
+                "properties": {
+                    "pin": {
+                        "properties": {
+                            "location": {"type": "geo_point"}
+                        }
+                    },
+                    "valeur_fonciere": {"type": "float"},
+                    "surface_reelle_bati": {"type": "integer"},
+                    "date_mutation": {"type": "date"}
+                }
+            }
+        }
+        es.indices.create(index=index_name, body=mapping)
+        print(f"✅ Index {index_name} créé avec mapping GeoPoint.")
+    else:
+        # On pourrait update le mapping si besoin, mais attention aux conflits
+        pass
+
 import numpy as np
 
 def clean_doc(doc):
@@ -206,6 +229,10 @@ def index_formatted_dvf_to_es(**kwargs):
     es = connect_es()
     if not es:
         raise Exception("Elasticsearch non joignable")
+
+    # Enforce Geopoint Mapping
+    ensure_dvf_mapping(es, "gov-dvf")
+    ensure_dvf_mapping(es, "gov-dvf-paris")
 
     print(f"Lecture Formatted DVF: {parquet_file}")
     df = pd.read_parquet(parquet_file)
