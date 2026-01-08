@@ -20,9 +20,10 @@ def convert_dvf_to_parquet(**kwargs):
     if not os.path.exists(formatted_folder):
         os.makedirs(formatted_folder, exist_ok=True)
 
-    if os.path.exists(target_file):
-        print(f"Fichier Parquet déjà existant : {target_file}")
-        return
+    # Force regeneration
+    # if os.path.exists(target_file):
+    #     print(f"Fichier Parquet déjà existant : {target_file}")
+    #     return
 
     print(f"Lecture du fichier RAW : {raw_path} ...")
     
@@ -31,7 +32,8 @@ def convert_dvf_to_parquet(**kwargs):
         
         # Exemple de nettoyage
         if 'date_mutation' in df.columns:
-            df['date_mutation'] = pd.to_datetime(df['date_mutation'], errors='coerce')
+            # Conversion en datetime64[us] pour compatibilité Spark
+            df['date_mutation'] = pd.to_datetime(df['date_mutation'], errors='coerce').astype('datetime64[us]')
 
         print(f"Écriture du Parquet : {target_file} ...")
         df.to_parquet(target_file, compression='snappy')

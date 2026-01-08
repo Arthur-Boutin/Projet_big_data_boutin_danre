@@ -60,8 +60,8 @@ def convert_lbc_to_parquet(**kwargs):
         # 'price' devrait être float/int
         df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
         
-        # 'date' en datetime
-        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        # 'date' en datetime (microsecondes pour Spark)
+        df['date'] = pd.to_datetime(df['date'], errors='coerce').astype('datetime64[us]')
 
         # Pour les colonnes complexes 'location' et 'attributes' (dicts),
         # Parquet gère les structs, mais parfois cela complique la lecture sans schéma strict.

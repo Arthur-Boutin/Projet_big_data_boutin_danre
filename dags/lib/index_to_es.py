@@ -42,6 +42,29 @@ def connect_es():
         print(f"❌ Erreur connexion ES: {e}")
         return None
 
+import numpy as np
+
+def clean_doc(doc):
+    """Nettoie le document pour Elasticsearch (compatibilité types NumPy, NaNs)."""
+    cleaned = {}
+    for k, v in doc.items():
+        # Gestion NaNs / None
+        if pd.isna(v):
+            continue
+            
+        # Conversion types NumPy
+        if isinstance(v, (np.int64, np.int32, np.int16, np.int8)):
+            cleaned[k] = int(v)
+        elif isinstance(v, (np.float64, np.float32)):
+            cleaned[k] = float(v)
+        elif isinstance(v, np.ndarray):
+            cleaned[k] = v.tolist()
+        elif isinstance(v, datetime):
+            cleaned[k] = v.isoformat()
+        else:
+            cleaned[k] = v
+    return cleaned
+
 def index_lbc_to_es(**kwargs):
     # Renamed: index_opportunities_to_es effectively
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -50,8 +73,6 @@ def index_lbc_to_es(**kwargs):
     
     # NEW SOURCE: USAGE / OPPORTUNITIES
     parquet_file = os.path.join(DATALAKE_ROOT_FOLDER, "usage", "opportunities", current_day)
-    # Spark écrit un dossier Parquet (avec des fichiers part-*.parquet). Pandas ne lit pas un dossier directement sauf avec engine='pyarrow' récent ou glob.
-    # Hack : On cherche le fichier parquet dans le dossier
     
     if not os.path.exists(parquet_file):
         print(f"⚠️ Pas de dossier Usage Opportunités : {parquet_file}")
@@ -75,28 +96,50 @@ def index_lbc_to_es(**kwargs):
              return
         df = pd.concat([pd.read_parquet(f) for f in files])
     
-    # Préparation des documents
+    # Préparation des documents avec Batching
     documents = []
-    for _, row in df.iterrows():
-        doc = row.to_dict()
-        
-        # Index Name Changed
-        index_name = "usage-opportunities"
-        
-        # Cleanup types NumPy pour ES (int64 -> int, etc)
-        # ... (Simplifié ici)
-        
-        action = {
-            "_index": index_name,
-            # "_id": ... # Si dispo
-            "_source": doc
-        }
-        documents.append(action)
+    index_name = "usage-opportunities"
+    
+    print(f"Début indexation dans {index_name}...")
+    
+    count_ok = 0
+    count_err = 0
+    
+    for i, row in df.iterrows():
+        try:
+            raw_doc = row.to_dict()
+            doc = clean_doc(raw_doc)
+            
+            # Optional: Add ID if available
+            # _id = str(doc['id']) if 'id' in doc else None
+            
+            action = {
+                "_index": index_name,
+                "_source": doc
+            }
+            # if _id: action["_id"] = _id
+            
+            documents.append(action)
+            
+            # Batch size 1000
+            if len(documents) >= 1000:
+                success, failed = helpers.bulk(es, documents, stats_only=True)
+                count_ok += success
+                input_len = len(documents)
+                documents = []  # Reset batch
+                print(f"Batch processed: +{success} (failed: {input_len - success})")
+                
+        except Exception as e:
+            print(f"❌ Erreur sur ligne {i}: {e}")
+            count_err += 1
 
+    # Final batch
     if documents:
-        print(f"Indexation de {len(documents)} docs dans {index_name}...")
         success, failed = helpers.bulk(es, documents, stats_only=True)
-        print(f"✅ Indexés: {success}")
+        count_ok += success
+        print(f"Final batch: +{success}")
+
+    print(f"✅ Fin indexation Opportunities. Total OK: {count_ok}, Erreurs locales: {count_err}")
 
 def index_dvf_to_es(**kwargs):
     # Renamed: index_market_stats_to_es
@@ -125,18 +168,25 @@ def index_dvf_to_es(**kwargs):
         df = pd.concat([pd.read_parquet(f) for f in files])
 
     documents = []
+    print(f"Début indexation Market Stats...")
+    
     for i, row in df.iterrows():
-        doc = row.to_dict()
-        
-        action = {
-            "_index": "usage-market-stats",
-            "_source": doc
-        }
-        documents.append(action)
+        try:
+            raw_doc = row.to_dict()
+            doc = clean_doc(raw_doc)
+            
+            action = {
+                "_index": "usage-market-stats",
+                "_source": doc
+            }
+            documents.append(action)
 
-        if len(documents) >= 5000:
-            helpers.bulk(es, documents)
-            documents = []
+            if len(documents) >= 5000:
+                helpers.bulk(es, documents)
+                print(f"Market Stats Batch: {len(documents)}")
+                documents = []
+        except Exception as e:
+            print(f"Skipping market stat row {i}: {e}")
 
     if documents:
         helpers.bulk(es, documents)
@@ -157,38 +207,114 @@ def index_formatted_dvf_to_es(**kwargs):
     if not es:
         raise Exception("Elasticsearch non joignable")
 
-    print(f"Lecture Formatted DVF (Paris Filter on indexing or index all? Index All for now): {parquet_file}")
+    print(f"Lecture Formatted DVF: {parquet_file}")
     df = pd.read_parquet(parquet_file)
     
-    # Optional: Filter Paris here too if we only want Paris in dashboard comparison
-    # df = df[df['code_commune'].astype(str).str.startswith('75')]
-
     documents = []
+    print(f"Début indexation Raw DVF (avec filtre Paris)...")
+    
     for i, row in df.iterrows():
-        doc = row.to_dict()
-        doc = {k: v for k, v in doc.items() if pd.notnull(v)}
-        
-        doc_id = doc.get('id_mutation', f"dvf_raw_{i}")
+        try:
+            raw_doc = row.to_dict()
+            doc = clean_doc(raw_doc)
+            
+            doc_id = doc.get('id_mutation', f"dvf_raw_{i}")
 
-        if 'latitude' in doc and 'longitude' in doc:
-             doc['pin'] = {
-                 "location": {
-                     "lat": float(doc['latitude']),
-                     "lon": float(doc['longitude'])
+            if 'latitude' in doc and 'longitude' in doc:
+                 doc['pin'] = {
+                     "location": {
+                         "lat": float(doc['latitude']),
+                         "lon": float(doc['longitude'])
+                     }
                  }
-             }
 
-        action = {
-            "_index": "gov-dvf",
-            "_id": str(doc_id),
-            "_source": doc
-        }
-        documents.append(action)
+            # 1. Index dans global gov-dvf
+            action_global = {
+                "_index": "gov-dvf",
+                "_id": str(doc_id),
+                "_source": doc
+            }
+            documents.append(action_global)
 
-        if len(documents) >= 5000:
-            helpers.bulk(es, documents)
-            documents = []
+            # 2. Si Paris (75...), index dans gov-dvf-paris
+            code = str(doc.get('code_commune', ''))
+            if code.startswith('75'):
+                action_paris = {
+                    "_index": "gov-dvf-paris",
+                    "_id": str(doc_id),
+                    "_source": doc
+                }
+                documents.append(action_paris)
+
+            if len(documents) >= 5000:
+                helpers.bulk(es, documents)
+                print(f"Raw DVF Batch: {len(documents)}")
+                documents = []
+                
+        except Exception as e:
+            print(f"Skipping raw dvf row {i}: {e}")
 
     if documents:
         helpers.bulk(es, documents)
         print("✅ Fin indexation Raw DVF.")
+
+def index_lbc_raw_to_es(**kwargs):
+    # Index raw Leboncoin ads for comparison
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    DATALAKE_ROOT_FOLDER = os.path.abspath(os.path.join(current_dir, '..', '..', 'Datalake'))
+    current_day = datetime.now().strftime("%Y%m%d")
+    
+    # Path to LBC Raw/Formatted data
+    parquet_file = os.path.join(DATALAKE_ROOT_FOLDER, "formatted", "leboncoin", "annonces", current_day, "annonces_cleaned.parquet")
+    
+    if not os.path.exists(parquet_file):
+        print(f"⚠️ Pas de dossier LBC Formatted : {parquet_file}")
+        return
+
+    es = connect_es()
+    if not es:
+        raise Exception("Elasticsearch non joignable")
+
+    print(f"Lecture LBC Raw: {parquet_file}")
+    
+    try:
+        df = pd.read_parquet(parquet_file, engine='pyarrow')
+    except:
+        import glob
+        files = glob.glob(os.path.join(parquet_file, "*.parquet"))
+        if not files:
+             print("Aucun fichier .parquet trouvé.")
+             return
+        df = pd.concat([pd.read_parquet(f) for f in files])
+
+    documents = []
+    print(f"Début indexation LBC Raw...")
+    
+    for i, row in df.iterrows():
+        try:
+            raw_doc = row.to_dict()
+            doc = clean_doc(raw_doc)
+            
+            # Use LBC ID if available
+            lbc_id = doc.get('id')
+            
+            action = {
+                "_index": "lbc-annonces",
+                "_source": doc
+            }
+            if lbc_id:
+                action["_id"] = str(lbc_id)
+            
+            documents.append(action)
+
+            if len(documents) >= 1000:
+                helpers.bulk(es, documents)
+                print(f"LBC Raw Batch: {len(documents)}")
+                documents = []
+        
+        except Exception as e:
+            print(f"Skipping LBC Raw row {i}: {e}")
+
+    if documents:
+        helpers.bulk(es, documents)
+        print("✅ Fin indexation LBC Raw.")

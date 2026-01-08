@@ -12,7 +12,7 @@ from lib.dvf_fetcher import fetch_dvf_data
 from lib.raw_to_fmt_dvf import convert_dvf_to_parquet
 from lib.lbc_fetcher import fetch_lbc_data
 from lib.raw_to_fmt_lbc import convert_lbc_to_parquet
-from lib.index_to_es import index_lbc_to_es, index_dvf_to_es, index_formatted_dvf_to_es
+from lib.index_to_es import index_lbc_to_es, index_dvf_to_es, index_formatted_dvf_to_es, index_lbc_raw_to_es
 from lib.compute_usage import compute_usage_layer
 
 default_args = {
@@ -75,6 +75,11 @@ with DAG(
         task_id='index_raw_dvf_to_es',
         python_callable=index_formatted_dvf_to_es
     )
+    
+    index_lbc_raw = PythonOperator(
+        task_id='index_lbc_raw',
+        python_callable=index_lbc_raw_to_es
+    )
 
     # SEQUENCE
     extract_task >> transform_task
@@ -84,3 +89,4 @@ with DAG(
 
     compute_usage >> [index_lbc, index_dvf_stats]
     transform_task >> index_dvf_raw
+    transform_lbc >> index_lbc_raw
