@@ -35,48 +35,60 @@ The main Airflow DAG, `immobilier_big_data_pipeline`, orchestrates the following
     -   `gov-dvf` & `gov-dvf-paris`: Granular, formatted DVF transaction data.
     -   `lbc-annonces`: Formatted Leboncoin ads.
 
-## How to Run
+## 🚀 How to Run
 
-This project is designed to be run with Docker and Docker Compose.
+This project is designed to be run with Docker. Everything is included (Airflow, Spark, Elasticsearch, Kibana, Scripts).
 
 ### Prerequisites
+-   **Docker Desktop** installed and running.
+-   **Git** installed.
 
--   Docker
--   Docker Compose
+### Installation & Setup
 
-### Setup
-
-1.  **Clone the repository:**
+1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/arthur-boutin/projet_big_data_boutin_danre.git
-    cd projet_big_data_boutin_danre
+    git clone https://github.com/Arthur-Boutin/Projet_big_data_boutin_danre.git
+    cd Projet_big_data_boutin_danre
     ```
 
-2.  **Set Airflow User ID (Linux/macOS):**
-    To avoid permission issues with files created by Airflow, set the `AIRFLOW_UID` environment variable. You can add this to your shell profile (`.bashrc`, `.zshrc`) or run it in your current terminal session.
+2.  **Fix Permissions (Linux/Mac only)**:
+    *If you are on Windows, skip this step.*
     ```bash
     echo "AIRFLOW_UID=$(id -u)" > .env
     ```
 
-3.  **Build and start the services:**
+3.  **Start the environment**:
+    We will build the image (to install dependencies) and start the containers.
     ```bash
     docker-compose up -d --build
     ```
-    This command will build the custom Airflow image (with PySpark and Java dependencies), and start all services (Airflow, Elasticsearch, Kibana, Postgres, Redis) in the background.
+    *Wait a few minutes for everything to start (Healthcheck).*
 
 ### Accessing Services
 
--   **Airflow UI**: `http://localhost:8080`
-    -   Login with username `airflow` and password `airflow`.
--   **Kibana**: `http://localhost:5601`
-    -   Navigate here to create dashboards and explore the indexed data.
--   **Elasticsearch API**: `http://localhost:9200`
+-   **Airflow**: [http://localhost:8080](http://localhost:8080) (Log: `airflow` / `airflow`)
+-   **Kibana**: [http://localhost:5601](http://localhost:5601)
+-   **Elasticsearch**: [http://localhost:9200](http://localhost:9200)
 
 ### Running the Pipeline
 
-1.  Open the Airflow UI at `http://localhost:8080`.
-2.  Find the `immobilier_big_data_pipeline` DAG on the main dashboard.
-3.  Click the toggle button to un-pause the DAG.
-4.  To start a run immediately, click the "play" button on the right side of the DAG's entry.
+1.  Go to Airflow (**127.0.0.1:8080**).
+2.  In the DAGs list, activate (Toggle **ON**) the DAG `immobilier_big_data_pipeline`.
+3.  Click the **Play** button (▶️) on the right to trigger it manually.
+4.  Monitor progress in the **Grid** tab.
 
-You can then monitor the progress of the pipeline in the "Grid" or "Graph" view. Once the indexing tasks are complete, the data will be available in Kibana. You may need to create index patterns in Kibana (e.g., `usage-*`, `gov-*`, `lbc-*`) to start visualizing the data.
+### Visualizing Data (Kibana)
+
+Once the pipeline finishes (tasks turn green):
+1.  Go to Kibana.
+2.  **Stack Management** > **Data Views** > **Create data view**.
+3.  Create `Usage Data` (pattern `usage-*`) and `DVF Paris` (pattern `gov-dvf-paris`).
+4.  Go to **Discover** or **Maps** to explore!
+
+---
+
+## 🛠 Troubleshooting
+
+-   **"No space left on device" error**: Docker needs space. Perform a cleanup: `docker system prune`.
+-   **Pipeline fails on indexing**: Check that Elasticsearch is "Healthy" in Docker Desktop.
+-   **Airflow doesn't load**: Wait 30-60 seconds after `docker-compose up`.

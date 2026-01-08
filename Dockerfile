@@ -13,5 +13,5 @@ ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 USER airflow
 
-# Install PySpark
-RUN pip install --no-cache-dir pyspark==3.5.0
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
