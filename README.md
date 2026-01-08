@@ -1,5 +1,4 @@
 # Real Estate Big Data Pipeline
-[![Ask DeepWiki](https://devin.ai/assets/askdeepwiki.png)](https://deepwiki.com/Arthur-Boutin/Projet_big_data_boutin_danre)
 
 This project implements a complete data engineering pipeline to collect, process, and analyze French real estate data. It fetches property transaction data from the official government source (DVF) and current real estate listings from Leboncoin. The data is processed using PySpark, stored in a structured data lake, and indexed into Elasticsearch for analysis and visualization with Kibana. The entire workflow is orchestrated by Apache Airflow.
 
