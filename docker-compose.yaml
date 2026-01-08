@@ -48,9 +48,10 @@ x-airflow-common:
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
+
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.9.2}
   &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.9.2}
-  # build: .
+  build: .
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
@@ -285,5 +286,32 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: [ "CMD-SHELL", "curl --fail http://localhost:9200 || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.1
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
 volumes:
   postgres-db-volume:
+  es-data:
