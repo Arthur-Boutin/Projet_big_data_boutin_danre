@@ -20,10 +20,10 @@ def convert_dvf_to_parquet(**kwargs):
     if not os.path.exists(formatted_folder):
         os.makedirs(formatted_folder, exist_ok=True)
 
-    # Force regeneration
-    # if os.path.exists(target_file):
-    #     print(f"Fichier Parquet déjà existant : {target_file}")
-    #     return
+    # Force regeneration check
+    if os.path.exists(target_file):
+        print(f"✅ Fichier Parquet déjà existant ({target_file}). Skipping transformation.")
+        return
 
     print(f"Lecture du fichier RAW : {raw_path} ...")
     
