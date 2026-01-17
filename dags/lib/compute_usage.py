@@ -15,10 +15,10 @@ def compute_usage_layer(**kwargs):
     lbc_path = os.path.join(DATALAKE_ROOT_FOLDER, "formatted", "leboncoin", "annonces", current_day, "annonces_cleaned.parquet")
     
     if not os.path.exists(dvf_path):
-        print("Skipping Usage: DVF data not found.")
+        print("Traitement annulé : données DVF introuvables.")
         return
     if not os.path.exists(lbc_path):
-        print("Skipping Usage: LBC data not found.")
+        print("Traitement annulé : données Leboncoin introuvables.")
         return
 
     usage_market_path = os.path.join(DATALAKE_ROOT_FOLDER, "usage", "market_analysis")
@@ -30,14 +30,14 @@ def compute_usage_layer(**kwargs):
         .getOrCreate()
     
     try:
-        print("📊 Chargement DVF...")
+        print("Chargement des données DVF en cours...")
         df_dvf = spark.read.parquet(dvf_path)
         
         has_cols = lambda df, cols: all([c in df.columns for c in cols])
         required_dvf = ['valeur_fonciere', 'surface_reelle_bati', 'code_commune']
         
         if has_cols(df_dvf, required_dvf):
-            print("📈 Calcul Market Analysis (Paris Only)...")
+            print("Calcul de l'analyse de marché (Paris uniquement) en cours...")
             
             df_cal = df_dvf.filter(
                 (col("code_commune").startswith("75")) &
@@ -57,13 +57,13 @@ def compute_usage_layer(**kwargs):
             )
             
             market_stats.write.mode("overwrite").parquet(usage_market_path)
-            print(f"✅ Market Analysis sauvegardé : {usage_market_path}")
+            print(f"Analyse de marché sauvegardée : {usage_market_path}")
             
         else:
-            print(f"⚠️ Colonnes manquantes dans DVF pour analyse m2: {df_dvf.columns}")
+            print(f"Colonnes manquantes dans DVF pour l'analyse au m2 : {df_dvf.columns}")
             market_stats = None
 
-        print("💎 Chargement LBC & Recherche Opportunités...")
+        print("Chargement des données Leboncoin et recherche d'opportunités en cours...")
         df_lbc = spark.read.parquet(lbc_path)
         
         if "location" in df_lbc.columns:
@@ -75,10 +75,10 @@ def compute_usage_layer(**kwargs):
             df_opp = df_lbc_aug.join(market_stats, df_lbc_aug.zip == market_stats.code_commune, "left")
             
             df_opp.write.mode("overwrite").parquet(usage_opp_path)
-            print(f"✅ Opportunités sauvegardées : {usage_opp_path}")
+            print(f"Opportunités sauvegardées : {usage_opp_path}")
             
     except Exception as e:
-        print(f"❌ Erreur Spark: {e}")
+        print(f"Erreur Spark : {e}")
         raise e
     finally:
         spark.stop()

@@ -12,7 +12,7 @@ def convert_lbc_to_parquet(**kwargs):
     raw_folder = os.path.join(DATALAKE_ROOT_FOLDER, "raw", "leboncoin", "annonces", current_day)
     
     if not os.path.exists(raw_folder):
-        print(f"⚠️ Dossier source introuvable : {raw_folder}")
+        print(f"Dossier source introuvable : {raw_folder}")
         return
 
     formatted_folder = os.path.join(DATALAKE_ROOT_FOLDER, "formatted", "leboncoin", "annonces", current_day)
@@ -24,7 +24,7 @@ def convert_lbc_to_parquet(**kwargs):
     json_files = [os.path.join(raw_folder, f) for f in os.listdir(raw_folder) if f.endswith('.json')]
     
     if not json_files:
-        print("⚠️ Aucun fichier JSON trouvé pour aujourd'hui.")
+        print("Aucun fichier JSON trouvé pour la date d'aujourd'hui.")
         return
 
     print(f"Lecture des {len(json_files)} fichiers RAW ...")
@@ -38,7 +38,7 @@ def convert_lbc_to_parquet(**kwargs):
                     if data:
                         all_data.extend(data)
             except Exception as e:
-                print(f"⚠️ Erreur lecture {jf}: {e}")
+                print(f"Erreur lors de la lecture du fichier {jf} : {e}")
 
         if not all_data:
             print("Aucune donnée trouvée dans les fichiers JSON.")
@@ -57,8 +57,8 @@ def convert_lbc_to_parquet(**kwargs):
         print(f"Écriture du Parquet : {target_file} ...")
         df.to_parquet(target_file, compression='snappy')
         
-        print(f"✅ Transformation terminée ! {len(df)} lignes écrites.")
+        print(f"Transformation terminée avec succès. {len(df)} lignes ont été écrites.")
         
     except Exception as e:
-        print(f"❌ Erreur lors de la transformation : {e}")
+        print(f"Erreur lors de la transformation : {e}")
         raise e

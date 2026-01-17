@@ -17,7 +17,7 @@ def convert_dvf_to_parquet(**kwargs):
         os.makedirs(formatted_folder, exist_ok=True)
 
     if os.path.exists(target_file):
-        print(f"✅ Fichier Parquet déjà existant ({target_file}). Skipping transformation.")
+        print(f"Le fichier Parquet existe déjà ({target_file}). Transformation ignorée.")
         return
 
     print(f"Lecture du fichier RAW : {raw_path} ...")
@@ -30,7 +30,7 @@ def convert_dvf_to_parquet(**kwargs):
 
         print(f"Écriture du Parquet : {target_file} ...")
         df.to_parquet(target_file, compression='snappy')
-        print("Transformation terminée !")
+        print("La transformation est terminée.")
         
     except Exception as e:
         print(f"Erreur : {e}")

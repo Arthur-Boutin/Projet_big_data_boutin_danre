@@ -14,18 +14,18 @@ if lbc_repo_path not in sys.path:
 try:
     import curl_cffi
 except ImportError:
-    print("⚠️ curl_cffi manquant. Installation automatique...")
+    print("Le module 'curl_cffi' est manquant. Installation automatique en cours...")
     import subprocess
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "curl_cffi==0.11.3"])
-        print("✅ curl_cffi installé.")
+        print("Le module 'curl_cffi' a été installé avec succès.")
     except Exception as e:
-        print(f"❌ Echec de l'installation automatique de curl_cffi: {e}")
+        print(f"Échec de l'installation automatique de 'curl_cffi' : {e}")
 
 try:
     import lbc
 except ImportError as e:
-    print(f"❌ Erreur import lbc: {e}")
+    print(f"Erreur lors de l'import du module 'lbc' : {e}")
     lbc = None
 
 def fetch_lbc_data(**kwargs):
@@ -52,9 +52,9 @@ def fetch_lbc_data(**kwargs):
                 state_data = json.load(f)
                 if 'last_fetched' in state_data:
                     last_fetched_date = datetime.fromisoformat(state_data['last_fetched'])
-                    print(f"ℹ️ Dernière récupération : {last_fetched_date}")
+                    print(f"Date de la dernière récupération : {last_fetched_date}")
         except Exception as e:
-            print(f"⚠️ Erreur lecture state : {e}")
+            print(f"Erreur lors de la lecture du fichier d'état : {e}")
 
     target_folder = os.path.join(DATALAKE_ROOT_FOLDER, "raw", "leboncoin", "annonces", current_day)
     
@@ -63,7 +63,7 @@ def fetch_lbc_data(**kwargs):
     
     target_file = os.path.join(target_folder, f"annonces_lbc_{current_time}.json")
     
-    print(f"🚀 Démarrage de l'extraction LBC via URL : {LEBONCOIN_URL}")
+    print(f"Démarrage de l'extraction Leboncoin via l'URL : {LEBONCOIN_URL}")
     
     try:
         client = lbc.Client()
@@ -79,7 +79,7 @@ def fetch_lbc_data(**kwargs):
         
         for i, ad in enumerate(result.ads):
             if i == 0:
-                print(f"✅ Première annonce trouvée : {getattr(ad, 'subject', 'Sans titre')} - {getattr(ad, 'price', 'N/A')}€")
+                print(f"Première annonce identifiée : {getattr(ad, 'subject', 'Sans titre')} - {getattr(ad, 'price', 'N/A')}€")
             
             ad_date_str = getattr(ad, 'first_publication_date', None)
             ad_date = None
@@ -90,7 +90,7 @@ def fetch_lbc_data(**kwargs):
                     ad_date = datetime.now() 
             
             if last_fetched_date and ad_date and ad_date <= last_fetched_date:
-                print(f"🛑 Annonce du {ad_date} déjà récupérée (Last: {last_fetched_date}). Arrêt du traitement.")
+                print(f"L'annonce datant du {ad_date} a déjà été récupérée (Dernière : {last_fetched_date}). Arrêt du traitement.")
                 break
             
             if ad_date:
@@ -128,19 +128,19 @@ def fetch_lbc_data(**kwargs):
             with open(target_file, "w", encoding="utf-8") as f:
                 json.dump(ads_data, f, indent=4, ensure_ascii=False)
             
-            print(f"\n🎉 SUCCÈS ! {len(ads_data)} nouvelles annonces sauvegardées.")
-            print(f"📁 Fichier : {target_file}")
+            print(f"\nSuccès. {len(ads_data)} nouvelles annonces ont été sauvegardées.")
+            print(f"Fichier : {target_file}")
             
             if new_max_date:
                 with open(state_file, 'w') as f:
                     json.dump({'last_fetched': new_max_date.isoformat()}, f)
-                print(f"💾 État mis à jour : {new_max_date}")
+                print(f"État mis à jour : {new_max_date}")
 
             return target_file
         else:
-            print("⚠️ Aucune nouvelle annonce trouvée.")
+            print("Aucune nouvelle annonce n'a été trouvée.")
             return None
 
     except Exception as e:
-        print(f"\n❌ ERREUR LBC FETCH: {e}")
+        print(f"\nErreur lors de la récupération LBC : {e}")
         raise e
