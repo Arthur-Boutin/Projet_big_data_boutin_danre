@@ -4,19 +4,13 @@ import json
 import logging
 from datetime import datetime
 
-# --- IMPORT FIX ---
-# La librairie lbc est dans dags/lbc/lbc, donc on ajoute dags/lbc au path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# current_dir = .../dags/lib
-# dags_root = .../dags
 dags_root = os.path.dirname(current_dir)
 lbc_repo_path = os.path.join(dags_root, 'lbc')
 
 if lbc_repo_path not in sys.path:
     sys.path.insert(0, lbc_repo_path)
 
-# --- AUTO-INSTALL FIX ---
-# Si curl_cffi manque (dépendance de lbc), on l'installe à la volée
 try:
     import curl_cffi
 except ImportError:
@@ -28,7 +22,6 @@ except ImportError:
     except Exception as e:
         print(f"❌ Echec de l'installation automatique de curl_cffi: {e}")
 
-# Tente d'importer la librairie lbc. 
 try:
     import lbc
 except ImportError as e:
@@ -37,27 +30,21 @@ except ImportError as e:
 
 def fetch_lbc_data(**kwargs):
     if lbc is None:
-        raise ImportError("Le module 'lbc' n'est pas installé ou introuvable. Veuillez l'installer (pip install ...) ou le placer dans le dossier accessible (ex: dags/lib).")
-
-    # --- CONFIGURATION ---
-    # URL fournie par l'utilisateur
+        raise ImportError("Le module 'lbc' n'est pas installé ou introuvable.")
+    
     LEBONCOIN_URL = "https://www.leboncoin.fr/recherche?category=9&locations=Paris__48.86023250788424_2.339006433295173_9256&real_estate_type=1,2,3,4&sort=time&order=desc" 
 
-    # --- CHEMINS ---
-    # On se base sur l'emplacement actuel du fichier pour trouver le Datalake
     current_dir = os.path.dirname(os.path.abspath(__file__))
     DATALAKE_ROOT_FOLDER = os.path.abspath(os.path.join(current_dir, '..', '..', 'Datalake'))
     
     current_day = datetime.now().strftime("%Y%m%d")
     current_time = datetime.now().strftime("%H%M%S")
     
-    # State Folder
     state_folder = os.path.join(DATALAKE_ROOT_FOLDER, "state")
     if not os.path.exists(state_folder):
         os.makedirs(state_folder, exist_ok=True)
     state_file = os.path.join(state_folder, "lbc_state.json")
     
-    # Load State
     last_fetched_date = None
     if os.path.exists(state_file):
         try:
@@ -69,13 +56,11 @@ def fetch_lbc_data(**kwargs):
         except Exception as e:
             print(f"⚠️ Erreur lecture state : {e}")
 
-    # Dossier de sortie Raw
     target_folder = os.path.join(DATALAKE_ROOT_FOLDER, "raw", "leboncoin", "annonces", current_day)
     
     if not os.path.exists(target_folder):
         os.makedirs(target_folder, exist_ok=True)
     
-    # Fichier avec Timestamp pour éviter écrasement
     target_file = os.path.join(target_folder, f"annonces_lbc_{current_time}.json")
     
     print(f"🚀 Démarrage de l'extraction LBC via URL : {LEBONCOIN_URL}")
@@ -83,11 +68,10 @@ def fetch_lbc_data(**kwargs):
     try:
         client = lbc.Client()
 
-        # Utilisation de la méthode de contournement via URL
         result = client.search(
             url=LEBONCOIN_URL,
             page=1,
-            limit=35 # Limite fixée dans le script d'origine
+            limit=35 
         )
 
         ads_data = []
@@ -97,26 +81,22 @@ def fetch_lbc_data(**kwargs):
             if i == 0:
                 print(f"✅ Première annonce trouvée : {getattr(ad, 'subject', 'Sans titre')} - {getattr(ad, 'price', 'N/A')}€")
             
-            # Récupération date annonce
             ad_date_str = getattr(ad, 'first_publication_date', None)
             ad_date = None
             if ad_date_str:
                 try:
                     ad_date = datetime.fromisoformat(ad_date_str)
                 except ValueError:
-                    ad_date = datetime.now() # Fallback
+                    ad_date = datetime.now() 
             
-            # Incremental Check
             if last_fetched_date and ad_date and ad_date <= last_fetched_date:
                 print(f"🛑 Annonce du {ad_date} déjà récupérée (Last: {last_fetched_date}). Arrêt du traitement.")
                 break
             
-            # Update max date seen in this batch
             if ad_date:
                 if new_max_date is None or ad_date > new_max_date:
                     new_max_date = ad_date
 
-            # Gestion propre de la localisation
             loc_data = "N/A"
             if hasattr(ad, 'location'):
                 loc_obj = ad.location
@@ -127,26 +107,23 @@ def fetch_lbc_data(**kwargs):
                     "lng": getattr(loc_obj, 'lng', 0)
                 }
 
-            # Gestion Attributs
             attributes_dict = {}
             if hasattr(ad, 'attributes') and isinstance(ad.attributes, list):
                 for attr in ad.attributes:
                     if hasattr(attr, 'key') and hasattr(attr, 'value'):
                         attributes_dict[attr.key] = attr.value
 
-            # Objet final normalisé
             ad_info = {
                 "id": getattr(ad, 'list_id', getattr(ad, 'id', 'N/A')),
                 "title": getattr(ad, 'subject', getattr(ad, 'title', 'Titre Inconnu')),
                 "price": getattr(ad, 'price', [0])[0] if isinstance(getattr(ad, 'price', 0), list) else getattr(ad, 'price', 0),
                 "url": getattr(ad, 'url', 'N/A'),
                 "date": ad_date_str or datetime.now().isoformat(),
-                "location": loc_data, # Sera stocké tel quel (dict) dans le JSON
-                "attributes": attributes_dict # Sera stocké tel quel (dict) dans le JSON
+                "location": loc_data, 
+                "attributes": attributes_dict 
             }
             ads_data.append(ad_info)
 
-        # Sauvegarde
         if ads_data:
             with open(target_file, "w", encoding="utf-8") as f:
                 json.dump(ads_data, f, indent=4, ensure_ascii=False)
@@ -154,7 +131,6 @@ def fetch_lbc_data(**kwargs):
             print(f"\n🎉 SUCCÈS ! {len(ads_data)} nouvelles annonces sauvegardées.")
             print(f"📁 Fichier : {target_file}")
             
-            # Update State
             if new_max_date:
                 with open(state_file, 'w') as f:
                     json.dump({'last_fetched': new_max_date.isoformat()}, f)

@@ -4,11 +4,8 @@ import pandas as pd
 from datetime import datetime
 import json
 
-# --- CONFIGURATION ES ---
-# On tente d'utiliser le nom du service Docker "elasticsearch" qui est résolu dans le réseau Docker
 ES_HOST = "http://elasticsearch:9200"
 
-# --- AUTO-INSTALL DEPENDENCY ---
 try:
     from elasticsearch import Elasticsearch, helpers
 except ImportError:
@@ -24,14 +21,12 @@ except ImportError:
 
 def connect_es():
     try:
-        # On désactive verify_certs car on a désactivé la sécurité SSL dans le docker-compose pour le dev
         es = Elasticsearch(ES_HOST, verify_certs=False)
         if es.ping():
             print(f"✅ Connecté à Elasticsearch: {ES_HOST}")
             return es
         else:
             print(f"❌ Impossible de pinger Elasticsearch à {ES_HOST}")
-            # Fallback pour le dev local hors conteneur
             es_local = Elasticsearch("http://localhost:9200", verify_certs=False)
             if es_local.ping():
                 print("✅ Connecté via localhost (Fallback)")
@@ -43,7 +38,6 @@ def connect_es():
         return None
 
 def ensure_dvf_mapping(es, index_name):
-    """Crée l'index avec le mapping GeoPoint si inexistant."""
     if not es.indices.exists(index=index_name):
         mapping = {
             "mappings": {
@@ -62,20 +56,16 @@ def ensure_dvf_mapping(es, index_name):
         es.indices.create(index=index_name, body=mapping)
         print(f"✅ Index {index_name} créé avec mapping GeoPoint.")
     else:
-        # On pourrait update le mapping si besoin, mais attention aux conflits
         pass
 
 import numpy as np
 
 def clean_doc(doc):
-    """Nettoie le document pour Elasticsearch (compatibilité types NumPy, NaNs)."""
     cleaned = {}
     for k, v in doc.items():
-        # Gestion NaNs / None
         if pd.isna(v):
             continue
             
-        # Conversion types NumPy
         if isinstance(v, (np.int64, np.int32, np.int16, np.int8)):
             cleaned[k] = int(v)
         elif isinstance(v, (np.float64, np.float32)):
@@ -89,12 +79,10 @@ def clean_doc(doc):
     return cleaned
 
 def index_lbc_to_es(**kwargs):
-    # Renamed: index_opportunities_to_es effectively
     current_dir = os.path.dirname(os.path.abspath(__file__))
     DATALAKE_ROOT_FOLDER = os.path.abspath(os.path.join(current_dir, '..', '..', 'Datalake'))
     current_day = datetime.now().strftime("%Y%m%d")
     
-    # NEW SOURCE: USAGE / OPPORTUNITIES
     parquet_file = os.path.join(DATALAKE_ROOT_FOLDER, "usage", "opportunities", current_day)
     
     if not os.path.exists(parquet_file):
@@ -107,7 +95,6 @@ def index_lbc_to_es(**kwargs):
 
     print(f"Lecture Usage LBC: {parquet_file}")
     
-    # Lecture Dossier Parquet
     try:
         df = pd.read_parquet(parquet_file, engine='pyarrow')
     except:
@@ -119,7 +106,6 @@ def index_lbc_to_es(**kwargs):
              return
         df = pd.concat([pd.read_parquet(f) for f in files])
     
-    # Préparation des documents avec Batching
     documents = []
     index_name = "usage-opportunities"
     
@@ -133,30 +119,23 @@ def index_lbc_to_es(**kwargs):
             raw_doc = row.to_dict()
             doc = clean_doc(raw_doc)
             
-            # Optional: Add ID if available
-            # _id = str(doc['id']) if 'id' in doc else None
-            
             action = {
                 "_index": index_name,
                 "_source": doc
             }
-            # if _id: action["_id"] = _id
-            
             documents.append(action)
             
-            # Batch size 1000
             if len(documents) >= 1000:
                 success, failed = helpers.bulk(es, documents, stats_only=True)
                 count_ok += success
                 input_len = len(documents)
-                documents = []  # Reset batch
+                documents = []
                 print(f"Batch processed: +{success} (failed: {input_len - success})")
                 
         except Exception as e:
             print(f"❌ Erreur sur ligne {i}: {e}")
             count_err += 1
 
-    # Final batch
     if documents:
         success, failed = helpers.bulk(es, documents, stats_only=True)
         count_ok += success
@@ -165,11 +144,9 @@ def index_lbc_to_es(**kwargs):
     print(f"✅ Fin indexation Opportunities. Total OK: {count_ok}, Erreurs locales: {count_err}")
 
 def index_dvf_to_es(**kwargs):
-    # Renamed: index_market_stats_to_es
     current_dir = os.path.dirname(os.path.abspath(__file__))
     DATALAKE_ROOT_FOLDER = os.path.abspath(os.path.join(current_dir, '..', '..', 'Datalake'))
     
-    # NEW SOURCE: USAGE / MARKET ANALYSIS
     parquet_file = os.path.join(DATALAKE_ROOT_FOLDER, "usage", "market_analysis")
     
     if not os.path.exists(parquet_file):
@@ -216,7 +193,6 @@ def index_dvf_to_es(**kwargs):
         print("✅ Fin indexation Market Stats.")
 
 def index_formatted_dvf_to_es(**kwargs):
-    # Restore: Index raw/formatted DVF for granular comparison
     current_dir = os.path.dirname(os.path.abspath(__file__))
     DATALAKE_ROOT_FOLDER = os.path.abspath(os.path.join(current_dir, '..', '..', 'Datalake'))
     
@@ -230,7 +206,6 @@ def index_formatted_dvf_to_es(**kwargs):
     if not es:
         raise Exception("Elasticsearch non joignable")
 
-    # Enforce Geopoint Mapping
     ensure_dvf_mapping(es, "gov-dvf")
     ensure_dvf_mapping(es, "gov-dvf-paris")
 
@@ -238,24 +213,45 @@ def index_formatted_dvf_to_es(**kwargs):
     df = pd.read_parquet(parquet_file)
     
     documents = []
-    print(f"Début indexation Raw DVF (avec filtre Paris)...")
+    print(f"Début indexation Raw DVF (avec filtres ML)...")
     
+    count_filtered = 0
+    total_processed = 0
+
     for i, row in df.iterrows():
         try:
+            total_processed += 1
             raw_doc = row.to_dict()
             doc = clean_doc(raw_doc)
             
+            type_local = doc.get('type_local', '')
+            if type_local not in ['Appartement', 'Maison']:
+                count_filtered += 1
+                continue
+            
+            valeur = doc.get('valeur_fonciere')
+            if valeur is None or valeur < 5000 or valeur > 50000000:
+                count_filtered += 1
+                continue
+                
+            surface = doc.get('surface_reelle_bati')
+            if surface is None or surface < 9 or surface > 10000:
+                count_filtered += 1
+                continue
+
+            if 'latitude' not in doc or 'longitude' not in doc or pd.isna(doc['latitude']) or pd.isna(doc['longitude']):
+                count_filtered += 1
+                continue
+
             doc_id = doc.get('id_mutation', f"dvf_raw_{i}")
 
-            if 'latitude' in doc and 'longitude' in doc:
-                 doc['pin'] = {
-                     "location": {
-                         "lat": float(doc['latitude']),
-                         "lon": float(doc['longitude'])
-                     }
-                 }
+            doc['pin'] = {
+                "location": {
+                    "lat": float(doc['latitude']),
+                    "lon": float(doc['longitude'])
+                }
+            }
 
-            # 1. Index dans global gov-dvf
             action_global = {
                 "_index": "gov-dvf",
                 "_id": str(doc_id),
@@ -263,7 +259,6 @@ def index_formatted_dvf_to_es(**kwargs):
             }
             documents.append(action_global)
 
-            # 2. Si Paris (75...), index dans gov-dvf-paris
             code = str(doc.get('code_commune', ''))
             if code.startswith('75'):
                 action_paris = {
@@ -283,15 +278,15 @@ def index_formatted_dvf_to_es(**kwargs):
 
     if documents:
         helpers.bulk(es, documents)
-        print("✅ Fin indexation Raw DVF.")
+    
+    print(f"✅ Fin indexation Raw DVF. Total: {total_processed}, Filtrés: {count_filtered}, Indexés: {total_processed - count_filtered}")
+
 
 def index_lbc_raw_to_es(**kwargs):
-    # Index raw Leboncoin ads for comparison
     current_dir = os.path.dirname(os.path.abspath(__file__))
     DATALAKE_ROOT_FOLDER = os.path.abspath(os.path.join(current_dir, '..', '..', 'Datalake'))
     current_day = datetime.now().strftime("%Y%m%d")
     
-    # Path to LBC Raw/Formatted data
     parquet_file = os.path.join(DATALAKE_ROOT_FOLDER, "formatted", "leboncoin", "annonces", current_day, "annonces_cleaned.parquet")
     
     if not os.path.exists(parquet_file):
@@ -322,7 +317,6 @@ def index_lbc_raw_to_es(**kwargs):
             raw_doc = row.to_dict()
             doc = clean_doc(raw_doc)
             
-            # Use LBC ID if available
             lbc_id = doc.get('id')
             
             action = {

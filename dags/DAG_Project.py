@@ -4,10 +4,8 @@ from airflow.operators.python import PythonOperator
 import sys
 import os
 
-# Include local library path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-# Imports from local lib
 from lib.dvf_fetcher import fetch_dvf_data
 from lib.raw_to_fmt_dvf import convert_dvf_to_parquet
 from lib.lbc_fetcher import fetch_lbc_data
@@ -30,37 +28,31 @@ with DAG(
     catchup=False,
 ) as dag:
 
-    # 1. FETCH DVF
     extract_task = PythonOperator(
         task_id='extract_dvf_2025',
         python_callable=fetch_dvf_data
     )
 
-    # 2. TRANSFORM DVF
     transform_task = PythonOperator(
         task_id='transform_dvf_2025',
         python_callable=convert_dvf_to_parquet
     )
 
-    # 3. FETCH LBC
     extract_lbc = PythonOperator(
         task_id='extract_lbc',
         python_callable=fetch_lbc_data
     )
 
-    # 4. TRANSFORM LBC
     transform_lbc = PythonOperator(
         task_id='transform_lbc',
         python_callable=convert_lbc_to_parquet
     )
 
-    # 5. COMPUTE USAGE (SPARK)
     compute_usage = PythonOperator(
         task_id='compute_usage_spark',
         python_callable=compute_usage_layer
     )
 
-    # 6. INDEXING
     index_lbc = PythonOperator(
         task_id='index_opportunities_to_es',
         python_callable=index_lbc_to_es
@@ -81,7 +73,6 @@ with DAG(
         python_callable=index_lbc_raw_to_es
     )
 
-    # SEQUENCE
     extract_task >> transform_task
     extract_lbc >> transform_lbc
 

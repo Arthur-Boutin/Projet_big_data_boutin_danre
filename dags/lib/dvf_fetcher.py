@@ -3,17 +3,11 @@ import requests
 from datetime import datetime
 
 def fetch_dvf_data(**kwargs):
-    # --- CHEMIN RELATIF ADAPTÉ ---
-    # On est dans : .../airflow/dags/lib/
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # On remonte de 2 crans pour arriver à la racine 'airflow' où se trouve 'Datalake'
     DATALAKE_ROOT_FOLDER = os.path.abspath(os.path.join(current_dir, '..', '..', 'Datalake'))
     
     current_day = datetime.now().strftime("%Y%m%d")
     
-    # Structure cible : .../airflow/Datalake/raw/gov/
-    # Demande utilisateur : direct dans gov, pas de sous-dossiers
     target_folder = os.path.join(DATALAKE_ROOT_FOLDER, "raw", "gov")
     
     if not os.path.exists(target_folder):
@@ -23,7 +17,6 @@ def fetch_dvf_data(**kwargs):
     filename = 'dvf_2025_full.csv.gz' 
     target_path = os.path.join(target_folder, filename)
     
-    # Checkup
     if os.path.exists(target_path) and os.path.getsize(target_path) > 0:
         print(f"Fichier déjà présent : {target_path}")
         return target_path
